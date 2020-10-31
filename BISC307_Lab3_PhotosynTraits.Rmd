@@ -1,39 +1,44 @@
 ---
-title: 'BISC 307, Lab 2: NEON Megapit Soil Profiles'
+title: 'BISC 307, Lab 3: Plant Traits & Physiology'
 author: "Prof. Jackie Hatala Matthes, FA 2020"
 date: 'Lab: 13 November 2020'
-
 output:
-  pdf_document: default
   html_document: default
 ---
 
 ### Lab 3 Objectives
 1. Learn to explore patterns in data that can be used to generate hypotheses and examine how ecological and evolutionary processes control photosynthesis.
 2. Examine variation within variables, and covariation among variables within a global dataset for leaf carbon exchange.
-3. Use models to describe patterns from data. 
+3. Use a non-dimensional statistical model (principal components analysis) to describe patterns among many variables within the data. 
 
 ### 1. Introduction
-In this lab, we'll work with a [global dataset](http://onlinelibrary.wiley.com/doi/10.1002/ecy.1992/abstract) of leaf carbon exchange measurements and leaf traits collected across 626 individual plants of 98 species at 12 sites in North and South America that span 58 degrees of latitude and published in in [Smith & Dukes  (2017)](http://onlinelibrary.wiley.com/doi/10.1002/ecy.1992/abstract). Our lab objectives for today will practice and build on the sections on Exploratory Data Analysis that you read in preparation for this week's lab, [Sections 7.1-7.6 from the R for Data Science book](http://r4ds.had.co.nz/exploratory-data-analysis.html), in addition to exploring global patterns in leaf carbon/water exchange.
+In this lab, we'll work with a [global dataset](http://onlinelibrary.wiley.com/doi/10.1002/ecy.1992/abstract) of leaf carbon exchange measurements and leaf traits collected across 626 individual plants of 98 species at 12 sites in North and South America that span 58 degrees of latitude and are published in [Smith & Dukes  (2017)](http://onlinelibrary.wiley.com/doi/10.1002/ecy.1992/abstract). Our lab objectives for today will practice and build on the sections on Exploratory Data Analysis that you read in preparation for this week's lab, [Sections 7.1-7.6 from the R for Data Science book](http://r4ds.had.co.nz/exploratory-data-analysis.html), in addition to exploring global patterns in leaf carbon/water exchange.
 
-First, we'll load the libraries that we'll be using. 
+First, we'll load the tidyverse library. 
 
-```{r}
+```{r, results = FALSE, warning=FALSE, message=FALSE}
 # Load libraries
 library(tidyverse)
 
-# Load plantecophys package to fit A-Ci curves
-#library(plantecophys)
+# Some that we'll use for stats later on:
+#install.packages("Hmisc")
+library(Hmisc)
+#install.packages("corrplot")
+library(corrplot)
+# Install factoextra, a package that is good at PCA stuff
+#install.packages("factoextra")
+library(factoextra)
 ```
 
 
 ### 2. Global dataset of Vcmax, Jmax, and Rd
 
-This global dataset used A-Ci curves collected from plants within ecosystems in North and South America to find Vcmax, Jmax, and Rd. This lab will focus on examining patterns, generating questions, and testing hypotheses for the values of Vcmax, Jmax, and Rd that have already been calculated in the `LCE_data.csv` file (LCE = leaf carbon exchange). First, let's load the data and see what it looks like:
+This global dataset used A-Ci photosynthesis curves collected from plants within ecosystems in North and South America to find Vcmax, Jmax, and Rd. This lab will focus on examining patterns, generating questions, and testing hypotheses for the values of Vcmax, Jmax, and Rd that are in the `LCE_data.csv` file (LCE = leaf carbon exchange). First, let's load the data and see what it looks like:
 
 ```{r}
 # Read LCE data frame
-LCE_global <- read_csv("data/LCE/LCE_data.csv")
+LCE_global <- read_csv("data/LCE/LCE_data.csv") %>%
+  mutate(SLA = LA/LM) # Make specific leaf area column (leaf area/leaf mass)
 
 LCE_global
 
@@ -41,30 +46,9 @@ LCE_global
 
 One of the first things to do when you start exploring a big dataset like this that you haven't seen before is to understand the dimensions of the data (which we can see from looking at the data frame above), and what type of replication there is within the major cateogires of the dataset. This can help to inform what to do next with the data.
 
-```{r}
-# Find numbers of "replicates" at each Locations (site)
-LCE_global %>% 
-  group_by(Location) %>%
-  summarize(count = n())
-
-# Find numbers of "replicates" for C3 and C4 plants
-LCE_global %>%
-  group_by(Photosynthesis) %>%
-  summarize(count = n())
-
-```
-
-***
-**Code Challenge 1:
-Examine numbers of replicates within at least two additional variables that you might be interested in examining further. Remember that the potential variables for exploration are all the column names of the LCE_global tibble. **
-
-***
-
-### 3. Visualizing variation within a single variable & covariation among a categorical and continuous variable
-
 The first place to start when you are doing exploratory data analysis is to visualize the distribution of your data. For categorical data, this is what we did when we generated "count" tables above. The tables are telling us how our dataset is distributed among those categories. We also could have plotted this using geom_bar:
 
-```{r}
+```{r, warning=FALSE, error=FALSE}
 # Plot data by Location
 ggplot(data = LCE_global) + 
   geom_bar(mapping = aes(x = Location))
@@ -75,22 +59,36 @@ ggplot(data = LCE_global) +
 
 ```
 
-We can also examine the distribution of our continuous variables with geom_freqpoly:
+***
+**Code Challenge 1:
+Examine numbers of replicates within at least two additional variables that you might be interested in examining further. Remember that the potential variables for exploration are all the column names of the LCE_global data frame. **
 
-```{r}
+***
+
+### 3. Visualizing variation within a single variable & covariation among a categorical and continuous variable
+
+I think that the R for Data Science book does an excellent job outlining these four questions to ask yourself when you notice a pattern in your data:
+
+1. Could this pattern be due to coincidence (i.e. random chance)?
+2. How can you describe the relationship implied by the pattern?
+3. How strong is the relationship implied by the pattern?
+4. What other variables might affect the relationship?
+5. Does the relationship change if you look at individual subgroups of the data?
+
+Visualizing your data is one of the most powerful ways to look for patterns and to also convince others that these patterns exist. It's always helpful to start with visualization and exploratory data analysis to examine patterns in your data that address your research question. 
+
+We can also look at the probability distribution of our continuous variables with geom_freqpoly:
+
+```{r, warning=FALSE, error=FALSE}
 # Plot Vcmax distribution
 ggplot(data = LCE_global) + 
   geom_freqpoly(aes(x = Vcmax))
-
-# Plot Rd distribution
-ggplot(data = LCE_global) + 
-  geom_freqpoly(aes(x = Rd))
 
 ```
 
 We can also use visual techniques to examine the covariation between a continuous and categorical variable. Let's start by examining the distribution for Vcmax within C3 and C4 plants:
 
-```{r}
+```{r, warning=FALSE, error=FALSE}
 # Plot distributions of Vcmax, colored by C3/C4 Photosynthesis
 ggplot(data = LCE_global) +
   geom_freqpoly(mapping = aes(x = Vcmax, color = Photosynthesis))
@@ -101,80 +99,188 @@ ggplot(data = LCE_global) +
 
 ```
 
-Visualizing the distributions of the data will help to understand the range of values, show differences among categories, highlight interesting aspects of your data (groups, outliers, etc.), and eventually inform details of statistical tests that you might use to quantify differences among groups in your data. 
+Visualizing the data distributions will help to understand the range of values, show differences among categories, and highlight interesting aspects of your data (groups, outliers, etc.). This can also inform details of statistical tests that you might use to quantify differences among groups in your data. 
 
-***
-**Code Challenge 2:
-Visualize the distributions for Vcmax separated by TWO of the categorical variables in the data. **
+From this we see that the distributions for Vcmax are not normal, but instead they have many low values and then a long tail in the positive direction with higher values as well. This is the case for most of the continuous variables in these data, which make them very good candidates for a log-transformation before further analysis. Taking the natural logarithm of these variables will make them more normally distrubted. Take my word for it that I checked the distributions of the following variables and they all fit the distirbution where a log-transformation would make them more normally distributed (i.e., more like a bell curve). 
 
-***
+```{r}
+# Log-transform the continuous variables with long tails
+LCE_global <- LCE_global %>%
+  mutate(Vcmax_log = log(Vcmax), Jmax_log = log(Jmax),
+         Rd_log = log(Rd), SLA_log = log(SLA),
+         Nper_log = log(Nper), CN_log = log(CN))
+```
 
-### 4. Visualizing covariation among two continuous variables
 
-There are also several continuous variables for which we can examine the connection to the leaf carbon exchange variables within this dataset. Let's first look to see whether leaf mass (`LM` in the data frame) is correlated to Vcmax:
+### 4. Visualizing covariation among variables
+
+There are several continuous variables for which we can examine the connection to the leaf carbon exchange variables within this dataset. Let's first look to see whether specific leaf area (leaf area per g biomass) is correlated to Vcmax:
 
 ```{r}
 # Plot leaf mass (LM) against Vcmax
 ggplot(data = LCE_global) +
-  geom_point(mapping = aes(x = LA, y = Vcmax))
-
+  geom_point(mapping = aes(x = SLA_log, y = Vcmax_log))
 ```
 
+We can also make a large plot that shows all of the pairwise correlations between variables in our dataset. For this, we'll first need to select only continuous variables from our data frame and drop observations that are NA. Then, we will calculate the correlation matrix. Finally, we can use the `corrplot()` function from the `corrplot` package to visualize the correlation matrix (correlogram).
+
+```{r}
+# 1. Select continuous variables from data frame
+# 2. Drop rows with NA values from the dataset
+LCE_cont <- select(LCE_global, Vcmax_log, Jmax_log, Rd_log, SLA_log, 
+                   CN_log, Nper_log, Cper) %>%
+  drop_na()
+
+# 3. Calculate the correlation matrix, including p-values for each comparison
+LCE_cor <- rcorr(as.matrix(LCE_cont), type="pearson")
+LCE_cor$r # look at correlation coefficients (r)
+LCE_cor$P # look at p-values for each pairwise comparison
+
+# 4. Make plot with correlation matrix (called a correlogram)
+corrplot(LCE_cor$r, type = "upper", 
+         tl.col = "black", 
+         tl.srt = 45, # tilt top row to 45-degree angle
+         addCoef.col = "black") 
+```
+
+We can also make a correlogram that uses the p-values of the pairwise correlation tests that indicates the comparisons that were significant. The code below will leave pairwise cells blank if they are not correlated at the sig.level specified:
+
+```{r}
+# Correlogram with p-value indicators
+corrplot(LCE_cor$r, type = "upper", 
+         tl.col = "black", 
+         tl.srt = 45, # tilt top row to 45-degree angle
+         p.mat = LCE_cor$P, # p-values from matrix
+         sig.level = 0.05, # alpha value for signficance
+         addCoef.col = "black",
+         insig = "blank")
+```
+
+***
+**Code Challenge 2:
+In your group, discuss the results from this correlation matrix. Do they align with your expectations given you knowledge about photosynthesis and leaf traits? Why or why not? **
+
+***
+
+### 5. Analysis of multiple co-varying traits: Principal Component Analysis 
+
+From our correlogram figure, we can see that there are several traits that have significant pairwise correlations with each other. But how can we visualize relationships among all 8 variables in this analysis? Principal component analysis (PCA) is a way of assessing multi-dimensional similarities and differences among data with high co-variation. PCA can reduce data with many dimensions into a smaller set of axes while still retaining as much information from those data as possible. 
+
+Geometrically, principal components of a PCA represent directions that explain the maximum amount of variability in the data. Here we'll work through an example that uses PCA to find coordination and co-variation among the eight variables in our data at once. If you're particularly interested in this topic, you can watch this [video with conceptual math details about PCA](https://youtu.be/FgakZw6K1QQ) and/or [this in-depth guide to PCA in R ](http://www.sthda.com/english/articles/31-principal-component-methods-in-r-practical-guide/112-pca-principal-component-analysis-essentials/). 
+
+```{r}
+# 1. Create a dataframe with only columns for the PCA
+LCE_pca <- LCE_global %>%
+  select(Location, Phenology, Vcmax_log, Jmax_log, Rd_log, 
+         Tleaf_photo, SLA_log, CN_log, Nper_log, Cper) %>%
+  drop_na() # remove rows with NAs that will conflict with PCA
+
+# 2. Specify the location and phenology columns (categories) to be their own objects
+# and remove them from the data frame. 
+# We need to do this because we want the variables to be able to apply labels to our PCA
+# later on, but we need to separate them because the PCA can only use continuous data
+location_vector <- as.vector(LCE_pca$Location)
+phenology_vector <- as.vector(LCE_pca$Phenology)
+Rd_vector <- as.vector(LCE_pca$Rd_log) # This is for the "bonus footage" down below
+LCE_pca <- select(LCE_pca, -Location, -Phenology, -Rd_log)
+
+# 3. Estimate the PCA model
+LCE_pca_est <- prcomp(LCE_pca, center= TRUE, scale.=TRUE)
+#Look at summary output of the pricipal components
+summary(LCE_pca_est)
+
+# Summary plot showing percent variation in each principal component
+fviz_eig(LCE_pca_est)
+```
+In looking at the summary output, we see that 44% (0.4387) of the variance in the whole dataset is captured by PC1 (the first principal component). PC2 captures an additional 21% of variation (for a cumulative total of 65%). This is a relatively large percentage of the total variation in our 8-variable dataset that is now captured by just two principal components, rather than having to assess all 8 variables independently. 
+
+We can also plot the PCA results, to see which of the original 8 variables help to explain the first two principal components, and how they are related to each other.
+
+```{r}
+# Contributions of the 8 variables to PC1
+# red line = expected average contribution if variables contribute equally
+fviz_contrib(LCE_pca_est, choice = "var", axes = 1, top = 10)
+
+# Contributions of variables to PC2
+fviz_contrib(LCE_pca_est, choice = "var", axes = 2, top = 10)
+```
+
+We can see that PC1 captures covariation among the variables carbon-to-nitrogen ratio, the percent leaf nitrogen, and the specific leaf area (leaf area per g biomass). PC2 captures covariation between Vcmax and Jmax.
+
+We can also visualize the geometric relationships among the variables on both PC1 and PC2 with a biplot: 
+
+```{r}
+# PCA plot mapping variables in relation to each other on PC1 & PC2
+fviz_pca_var(LCE_pca_est,
+             geom.ind = "point", # show points only (but not "text")
+             mean.point = FALSE, # Remove point that represents the mean of each group
+             addEllipses = FALSE, # add ellipses
+             col.var = "black") + # make variables & arrows black (default is blue)
+  theme_bw()
+
+```
+This plots principal component (PC) 1 on the x-axis and PC2 on the y-axis, with the contributions of different variables mapped as arrows. When the arrow is parallel to an axis, it explains variation along that axis, and the longer the arrow, the stronger the relationship. 
+
+We see that CN, Nper, and SLA are roughly parallel to the x-axis, and this matches our results from the previous contribution plot that showed these variables contributed to PC1. We can see that percent nitrogen and SLA are positively correlated with each other since they point in the same direction, and these are negatively correlated with the carbon-to-nitrogen ratio and to a slightly weaker extent percent carbon (since this arrow is shorter). This can be used to interpret trait co-variation and potential physiological strategies, where plants with thin leaves have high nitrogen content and a low carbon-to-nitrogen ratio, and in contrast plants with thicker leaves (low SLA) have low nitrogen and a higher carbon-to-nitrogen ratio. This could represent a photosynthesis-defense trade-off since the high N leaves with high SLA photosynthesize quickly, but thicker leaves with lower N are less likely to be eaten by herbivores.
+
+We can also map points onto a biplot (plot with two PCA axes on the graph axes) with clusters to see if there are differences among a categorical variable in the data, for example phenology (evergreen or deciduous leaves).
+
+```{r}
+# Plot and color by phenology group
+fviz_pca_biplot(LCE_pca_est,
+             geom.ind = "point", # show points only (but not "text")
+             col.ind = phenology_vector, # color by location
+             mean.point = FALSE, # Remove point that represents the mean of each group
+             addEllipses = TRUE, # add ellipses
+             col.var = "black", # make variables & arrows black (default is blue)
+             legend.title = "Phenology")  +
+  theme_bw()
+
+```
+From this plot we can see that there is a good deal of overlap for the two phenology groups on the PC1-PC2 biplot, but in general there are more evergreen leaf measurements in the negative range of PC1 (high CN ratio) and PC2 (high Jmax, Vcmax) compared to the deciduous group.
 
 ***
 **Code Challenge 3:
-Visualize the covariation between two of the photosynthesis variables (Vcmax, Jmax, and Rd). Do they covary? If so, describe the pattern, and speculate about why they might covary. **
+In your group, map a different categorical variable onto the results from the PCA biplot. Are the groups different for the category that you chose? If so, how? **
 
 ***
 
-### 5. Patterns and models
+**BONUS FOOTAGE:**
+You can also extract a PC axis and use it as an independent variable in a linear regression model. This is particularly helpful if you have a set of dependent variables that all covary (like the 8 variables in our case), and you don't want to include 8 individual response variables. 
 
-I think that the R for Data Science book does an excellent job outlining these four questions to ask yourself when you notice a pattern in your data:
-
-1. Could this pattern be due to coincidence (i.e. random chance)?
-2. How can you describe the relationship implied by the pattern?
-3. How strong is the relationship implied by the pattern?
-4. What other variables might affect the relationship?
-5. Does the relationship change if you look at individual subgroups of the data?
-
-Visualizing your data is one of the most powerful ways to look for patterns and to also convince others that these patterns exist. It's always helpful to start with visualization and exploratory data analysis to examine patterns in your data that address your research question. However, at some point you will need to do a statistical test with a statistical model to determine whether the patterns that you see are "significant" (this is a complex term that we'll only scratch the surface of within this class). 
+Let's work with the example of estimating a linear model with the PC1 axis from the example above as the independent variable, in contrast to including the individual variables for Vcmax, Jmax, percent nitrogen, and the carbon-to-nitrogen ratio. As the response variable, let's try to capture variation in Rd, the rate of dark respriation. To do this, we'll need to extract the PC1 axis coordinates that correspond to different data points (this is where the individual data points map onto the PC1 axis).
 
 ```{r}
-# ANOVA: analysis of variance
-# model differences in continuous variable against cateogorical groups
-C3C4_Vcmax <- lm(Vcmax ~ Photosynthesis, data = LCE_global)
-summary(C3C4_Vcmax)
+# Extract PC1 coordinates as a single indpednent variable
+# 1. Find the PC1 coordinates for the individual data points
+LCE_pca_vars <- get_pca_ind(LCE_pca_est)
+LCE_PC1_coord <- LCE_pca_vars$coord[,1]  # First column of coordinates is PC1
 
-# Tukey Pairwise Honestly Significant Differences (HSD) Test 
-TukeyHSD(aov(C3C4_Vcmax))
+# 2. Reattach the PC1 coordinates to the data frame
+LCE_pca_coord <- LCE_pca %>%
+  mutate(LC1_coord = LCE_PC1_coord,
+         Rd_log = Rd_vector)# remove rows with NAs that will conflict with PCA
 
+# Estimate a linear regression model for Rd with PC1
+lm_Rd_PC1 <- lm(Rd_log ~ LC1_coord, data = LCE_pca_coord)
+summary(lm_Rd_PC1)
 ```
+We can see from the summary output that PC1 fit a significant amount of variation in dark respiration (p < 0.05), and that the R2 for this model is 0.17. The slope is positive, which indicates that thin leaves with high nitrogen tend to have higher rates of dark respiration than thick leaves with a high carbon-to-nitrogen ratio. 
 
-The output from this statitsical model and the Tukey HSD test show us that the mean Vcmax values for the two groups (C3 and C4 plants) are marginally significantly different (p < 0.1). The mean Vcmax for the C4 group is 10.323 (with standard error 5.978) larger than the C3 group. 
-
-One important qualification for these results is that whether a plant is C3 or C4 in our dataset might be confounded with other variables, and thus it might not represent a causal relationship. For example, if all of our C4 measurements were from a tropical site, this might mean that temperature, not photosynthesic pathway, was the causal mechanism for this pattern. Throughout exploratory data analysis and statistical testing, it's **essential** to keep reminding yourself about what the data mean and how different variables might be connected to each other. 
-
-For the purposes of this lab, a useful stratgey to avoid suprious or confounded results is to take a subset of the data (using Data Transformation tools from previous labs) to examine patterns at a smaller scale. For example, we could fit an ANOVA model for the Vcmax of C3 and C4 plants on data just from the tropical sites, or just from a particular site. Or, if we wanted to look at patterns across all the sites, we could subset to just examine C3 plants (or vice versa, C4 plants). 
-
+This framework can be a helpful and less biased way to incorporate multiple co-varying variables into a linear regression model, since colinearity of response variables violates one of the assumptions of linear regression. 
 
 ***
 **LAB REPORT INSTRUCTIONS:**
 
-* For your Lab 3 Report, you can investigate a question/hypothesis related to Vcmax, Jmax, or Rd that can be tested by the global leaf carbon exchange dataset. You can look at the entire dataset, or a subset (particular sites, particular species, etc.) to formulate/answer your research question. 
+* For your Lab 3 Report, you can investigate a question/hypothesis related to Vcmax, Jmax, and/or Rd that can be tested by the global leaf carbon exchange dataset. You can look at the entire dataset, or a subset (particular sites, particular species, etc.) to formulate/answer your research question. 
 
 * As you structure your data analysis to answer your question, produce an .Rmd file pretending that you are starting from scratch (i.e., don't assume that you have anything loaded from doing the lab exercise). The goal is to be able to hand someone your code and be able to have them re-run your analysis to see what you did and how - this is reproducible research! 
 
 * You should `Commit` and `Push` your Rmd file containing your R code and the integrated text for the Lab 3 Report following the Lab Report Guidelines. 
 
-* Your Lab 3 Report document must include at least one ggplot figure and results from one ANOVA statistial test.
-
+* Your Lab 3 Report document must include at least one statistial analysis (ANOVA, linear regression, correlation, or PCA).
 
 ***
-
-
-
-
-
 
 
 
